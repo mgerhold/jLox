@@ -28,4 +28,10 @@ public class RPNPrinter implements Expr.Visitor<String> {
     public String visitUnaryExpr(Expr.Unary expr) {
         return getRPNRepresentation(expr.right) + " " + expr.operator.lexeme;
     }
+
+    @Override
+    public String visitTernaryExpr(Expr.Ternary expr) {
+        return expr.firstOperator.lexeme + " " + expr.secondOperator.lexeme + " " + getRPNRepresentation(expr.first)
+                + " " + getRPNRepresentation(expr.second) + " " + getRPNRepresentation(expr.third);
+    }
 }

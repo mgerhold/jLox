@@ -38,4 +38,10 @@ public class AstPrinter implements Expr.Visitor<String> {
     public String visitUnaryExpr(Expr.Unary expr) {
         return parenthesize(expr.operator.lexeme, expr.right);
     }
+
+    @Override
+    public String visitTernaryExpr(Expr.Ternary expr) {
+        return "(" + print(expr.first) + " " + expr.firstOperator.lexeme + " " + print(expr.second) + " "
+                + expr.secondOperator.lexeme + " " + print(expr.third) + ")";
+    }
 }

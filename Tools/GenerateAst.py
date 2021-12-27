@@ -79,7 +79,8 @@ def main():
             "Binary   : Expr left, Token operator, Expr right",
             "Grouping : Expr expression",
             "Literal  : Object value",
-            "Unary    : Token operator, Expr right"
+            "Unary    : Token operator, Expr right",
+            "Ternary  : Expr first, Token firstOperator, Expr second, Token secondOperator, Expr third"
         ])
 
 
