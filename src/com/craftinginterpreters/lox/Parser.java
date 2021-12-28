@@ -6,9 +6,9 @@ import static com.craftinginterpreters.lox.TokenType.*;
 
 /*
 expression     → sequence ;
-sequence       → equality ( "," equality)* ;
-equality       → conditional ( ( "!=" | "==" ) conditional )* ;
-conditional    → comparison ( "?" comparison ":" comparison )* ;
+sequence       → conditional ( "," conditional)* ;
+conditional    → equality ( "?" expression ":" conditional )? ;
+equality       → comparison ( ( "!=" | "==" ) comparison )* ;
 comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 term           → factor ( ( "-" | "+" ) factor )* ;
 factor         → unary ( ( "/" | "*" ) unary )* ;
@@ -41,24 +41,11 @@ public class Parser {
         return sequence();
     }
 
-    // sequence       → equality ( "," equality)* ;
+    // sequence       → conditional ( "," conditional)* ;
     private Expr sequence() {
-        Expr expr = equality();
-
-        while (match(COMMA)) {
-            Token operator = previous();
-            Expr right = equality();
-            expr = new Expr.Binary(expr, operator, right);
-        }
-
-        return expr;
-    }
-
-    // equality       → conditional ( ( "!=" | "==" ) conditional )* ;
-    private Expr equality() {
         Expr expr = conditional();
 
-        while (match(BANG_EQUAL, EQUAL_EQUAL)) {
+        while (match(COMMA)) {
             Token operator = previous();
             Expr right = conditional();
             expr = new Expr.Binary(expr, operator, right);
@@ -67,16 +54,30 @@ public class Parser {
         return expr;
     }
 
-    // conditional    → comparison ( "?" comparison ":" comparison )* ;
+    // conditional    → equality ( "?" expression ":" conditional )? ;
     private Expr conditional() {
-        Expr condition = comparison();
-        while (match(QUESTION_MARK)) {
-            Expr thenBranch = comparison();
-            consume(COLON, "Expected ':'.");
-            Expr elseBranch = comparison();
-            condition = new Expr.Conditional(condition, thenBranch, elseBranch);
+        Expr expr = equality();
+        if (match(QUESTION_MARK)) {
+            Expr thenBranch = expression();
+            consume(COLON, "Expected ':' after then-branch of conditional expression.");
+            Expr elseBranch = conditional();
+            expr = new Expr.Conditional(expr, thenBranch, elseBranch);
         }
-        return condition;
+
+        return expr;
+    }
+
+    // equality       → comparison ( ( "!=" | "==" ) comparison )* ;
+    private Expr equality() {
+        Expr expr = comparison();
+
+        while (match(BANG_EQUAL, EQUAL_EQUAL)) {
+            Token operator = previous();
+            Expr right = comparison();
+            expr = new Expr.Binary(expr, operator, right);
+        }
+
+        return expr;
     }
 
     // comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
