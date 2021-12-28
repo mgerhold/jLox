@@ -40,8 +40,7 @@ public class AstPrinter implements Expr.Visitor<String> {
     }
 
     @Override
-    public String visitTernaryExpr(Expr.Ternary expr) {
-        return "(" + print(expr.first) + " " + expr.firstOperator.lexeme + " " + print(expr.second) + " "
-                + expr.secondOperator.lexeme + " " + print(expr.third) + ")";
+    public String visitConditionalExpr(Expr.Conditional expr) {
+        return "(" + print(expr.condition) + " ? " + print(expr.thenBranch) + " : " + print(expr.elseBranch) + ")";
     }
 }

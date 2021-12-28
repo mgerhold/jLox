@@ -30,8 +30,8 @@ public class RPNPrinter implements Expr.Visitor<String> {
     }
 
     @Override
-    public String visitTernaryExpr(Expr.Ternary expr) {
-        return expr.firstOperator.lexeme + " " + expr.secondOperator.lexeme + " " + getRPNRepresentation(expr.first)
-                + " " + getRPNRepresentation(expr.second) + " " + getRPNRepresentation(expr.third);
+    public String visitConditionalExpr(Expr.Conditional expr) {
+        return getRPNRepresentation(expr.condition) + " " + getRPNRepresentation(expr.thenBranch) + " "
+                + getRPNRepresentation(expr.elseBranch) + " ?:";
     }
 }

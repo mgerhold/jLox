@@ -69,15 +69,14 @@ public class Parser {
 
     // conditional    → comparison ( "?" comparison ":" comparison )* ;
     private Expr conditional() {
-        Expr expr = comparison();
+        Expr condition = comparison();
         while (match(QUESTION_MARK)) {
-            var questionMark = previous();
-            Expr second = comparison();
-            var colon = consume(COLON, "Expected ':'.");
-            Expr third = comparison();
-            expr = new Expr.Ternary(expr, questionMark, second, colon, third);
+            Expr thenBranch = comparison();
+            consume(COLON, "Expected ':'.");
+            Expr elseBranch = comparison();
+            condition = new Expr.Conditional(condition, thenBranch, elseBranch);
         }
-        return expr;
+        return condition;
     }
 
     // comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
