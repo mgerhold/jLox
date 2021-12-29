@@ -38,6 +38,9 @@ public class Interpreter implements Expr.Visitor<Object> {
                 return (double) left - (double) right;
             case SLASH:
                 checkNumberOperands(expr.operator, left, right);
+                if ((double)right == 0.0) {
+                    throw new RuntimeError(expr.operator, "Division by 0.");
+                }
                 return (double) left / (double) right;
             case STAR:
                 checkNumberOperands(expr.operator, left, right);
@@ -51,6 +54,16 @@ public class Interpreter implements Expr.Visitor<Object> {
                     return (String) left + (String) right;
                 }
 
+                if (left instanceof String) {
+                    // "1" + true = "1true"
+                    return (String)left + stringify(right);
+                }
+
+                if (right instanceof String) {
+                    // 1 + "true" = "1true"
+                    return stringify(left) + (String)right;
+                }
+
                 throw new RuntimeError(expr.operator, "Operator '+' is only supported for numbers and strings.");
             default:
                 return null; // unreachable
@@ -59,7 +72,7 @@ public class Interpreter implements Expr.Visitor<Object> {
 
     @Override
     public Object visitGroupingExpr(Expr.Grouping expr) {
-        return evaluate(expr);
+        return evaluate(expr.expression);
     }
 
     @Override
@@ -107,6 +120,10 @@ public class Interpreter implements Expr.Visitor<Object> {
         if (left == null) {
             return false;
         }
+        // make +0.0 == -0.0 evaluate to true (equals() would evaluate to false)
+        if (left instanceof Double && right instanceof Double) {
+            return (double)left == (double)right;
+        }
         return left.equals(right);
     }
 
@@ -116,6 +133,9 @@ public class Interpreter implements Expr.Visitor<Object> {
         }
 
         if (object instanceof Double) {
+            if ((double)object == 0.0) { // print -0.0 as 0
+                return "0";
+            }
             var text = object.toString();
             if (text.endsWith(".0")) {
                 text = text.substring(0, text.length() - 2);
