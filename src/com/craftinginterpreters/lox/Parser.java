@@ -1,11 +1,24 @@
 package com.craftinginterpreters.lox;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static com.craftinginterpreters.lox.TokenType.*;
 
 /*
-expression     → sequence ;
+program        → declaration* EOF ;
+declaration    → varDecl
+               | statement ;
+varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
+statement      → exprStmt
+               | printStmt
+               | block ;
+exprStmt       → expression ";" ;
+printStmt      → "print" expression ";" ;
+block          → "{" declaration* "}" ;
+expression     → assignment ;
+assignment     → IDENTIFIER "=" assignment
+               | sequence ;
 sequence       → conditional ( "," conditional)* ;
 conditional    → equality ( "?" expression ":" conditional )? ;
 equality       → comparison ( ( "!=" | "==" ) comparison )* ;
@@ -14,8 +27,10 @@ term           → factor ( ( "-" | "+" ) factor )* ;
 factor         → unary ( ( "/" | "*" ) unary )* ;
 unary          → ( "!" | "-" ) unary
                | primary ;
-primary        → NUMBER | STRING | "true" | "false" | "nil"
-               | "(" expression ")" ;
+primary        → "true" | "false" | "nil"
+               | NUMBER | STRING
+               | "(" expression ")"
+               | IDENTIFIER ;
  */
 
 public class Parser {
@@ -28,17 +43,100 @@ public class Parser {
         this.tokens = tokens;
     }
 
-    Expr parse() {
+    List<Stmt> parse() {
+        List<Stmt> statements = new ArrayList<>();
+        while (!isAtEnd()) {
+            statements.add(declaration());
+        }
+
+        return statements;
+    }
+
+    // declaration    → varDecl
+    //                | statement ;
+    private Stmt declaration() {
         try {
-            return expression();
+            if (match(VAR)) {
+                return variableDeclaration();
+            }
+            return statement();
         } catch (ParseError error) {
+            synchronize();
             return null;
         }
     }
 
-    // expression     → sequence ;
+    // varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
+    private Stmt variableDeclaration() {
+        final var identifier = consume(IDENTIFIER, "Identifier expected after 'var'.");
+        Expr initializer = null;
+        if (match(EQUAL)) {
+            initializer = expression();
+        }
+        consume(SEMICOLON, "Expected ';' after variable declaration.");
+        return new Stmt.Var(identifier, initializer);
+    }
+
+    // statement      → exprStmt
+    //                | printStmt
+    //                | block ;
+    private Stmt statement() {
+        if (match(PRINT)) {
+            return printStatement();
+        }
+        if (match(LEFT_BRACE)) {
+            return new Stmt.Block(block());
+        }
+        return expressionStatement();
+    }
+
+    // printStmt      → "print" expression ";" ;
+    private Stmt printStatement() {
+        final var argument = expression();
+        consume(SEMICOLON, "Expected ';' after expression.");
+        return new Stmt.Print(argument);
+    }
+
+    // exprStmt       → expression ";" ;
+    private Stmt expressionStatement() {
+        final var expr = expression();
+        consume(SEMICOLON, "Expected ';' after expression.");
+        return new Stmt.Expression(expr);
+    }
+
+    // block          → "{" declaration* "}" ;
+    private List<Stmt> block() {
+        List<Stmt> statements = new ArrayList<>();
+        while (!isAtEnd() && !check(RIGHT_BRACE)) {
+            statements.add(declaration());
+        }
+        consume(RIGHT_BRACE, "Expected '}' to close block.");
+        return statements;
+    }
+
+    // expression     → assignment ;
     private Expr expression() {
-        return sequence();
+        return assignment();
+    }
+
+    // assignment     → IDENTIFIER "=" assignment
+    //                | sequence ;
+    private Expr assignment() {
+        final var expr = sequence();
+        if (match(EQUAL)) {
+            final var lastTokenBeforeEquals = previous();
+            final var value = assignment();
+
+            if (expr instanceof Expr.Variable) {
+                final var name = ((Expr.Variable)expr).name;
+                return new Expr.Assign(name, value);
+            }
+            // the result of the call to error(), which is an exception, is purposely not thrown
+            // because the parser should not enter "panic mode" here
+            error(lastTokenBeforeEquals, "l-value is required left of an assignment.");
+        }
+
+        return expr;
     }
 
     // sequence       → conditional ( "," conditional)* ;
@@ -128,8 +226,10 @@ public class Parser {
         return primary();
     }
 
-    // primary        → NUMBER | STRING | "true" | "false" | "nil"
-    //               | "(" expression ")" ;
+    // primary        → "true" | "false" | "nil"
+    //                | NUMBER | STRING
+    //                | "(" expression ")"
+    //                | IDENTIFIER ;
     private Expr primary() {
         if (match(FALSE)) {
             return new Expr.Literal(false);
@@ -143,11 +243,13 @@ public class Parser {
         if (match(NUMBER, STRING)) {
             return new Expr.Literal(previous().literal);
         }
-
         if (match(LEFT_PAREN)) {
             var expr = expression();
             consume(RIGHT_PAREN, "Expected ')' after expression.");
             return new Expr.Grouping(expr);
+        }
+        if (match(IDENTIFIER)) {
+            return new Expr.Variable(previous());
         }
         throw error(peek(), "Expected expression.");
     }

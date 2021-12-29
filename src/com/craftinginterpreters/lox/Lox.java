@@ -56,13 +56,13 @@ public class Lox {
         final List<Token> tokens = scanner.scanTokens();
 
         var parser = new Parser(tokens);
-        var expression = parser.parse();
+        var statements = parser.parse();
 
         if (hadError) {
             return;
         }
 
-        interpreter.interpret(expression);
+        interpreter.interpret(statements);
     }
 
     private static void report(int line, String where, String message) {

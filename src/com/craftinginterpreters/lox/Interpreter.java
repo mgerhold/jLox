@@ -1,14 +1,26 @@
 package com.craftinginterpreters.lox;
 
-public class Interpreter implements Expr.Visitor<Object> {
+import java.util.List;
 
-    public void interpret(Expr expression) {
+public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
+
+    private Environment environment = new Environment();
+
+    public void interpret(List<Stmt> statements) {
         try {
-            final var value = expression.accept(this);
-            System.out.println(stringify(value));
+            for (final var statement : statements) {
+                execute(statement);
+            }
         } catch (RuntimeError error) {
             Lox.runtimeError(error);
         }
+    }
+
+    @Override
+    public Object visitAssignExpr(Expr.Assign expr) {
+        final var value = evaluate(expr.value);
+        environment.assign(expr.name, value);
+        return value;
     }
 
     @Override
@@ -99,8 +111,17 @@ public class Interpreter implements Expr.Visitor<Object> {
         return isTruthy(evaluate(expr.condition)) ? evaluate(expr.thenBranch) : evaluate(expr.elseBranch);
     }
 
+    @Override
+    public Object visitVariableExpr(Expr.Variable expr) {
+        return environment.get(expr.name);
+    }
+
     private Object evaluate(Expr expression) {
         return expression.accept(this);
+    }
+
+    private void execute(Stmt statement) {
+        statement.accept(this);
     }
 
     private static boolean isTruthy(Object value) {
@@ -160,4 +181,44 @@ public class Interpreter implements Expr.Visitor<Object> {
         throw new RuntimeError(operator, "Operands must be numbers.");
     }
 
+    @Override
+    public Void visitBlockStmt(Stmt.Block stmt) {
+        executeBlock(stmt.statements, new Environment(environment));
+        return null;
+    }
+
+    @Override
+    public Void visitExpressionStmt(Stmt.Expression stmt) {
+        evaluate(stmt.expression);
+        return null;
+    }
+
+    @Override
+    public Void visitPrintStmt(Stmt.Print stmt) {
+        System.out.println(stringify(evaluate(stmt.expression)));
+        return null;
+    }
+
+    @Override
+    public Void visitVarStmt(Stmt.Var stmt) {
+        Object initialValue = null;
+        if (stmt.initializer != null) {
+            initialValue = evaluate(stmt.initializer);
+        }
+        environment.define(stmt.name.lexeme, initialValue);
+        return null;
+    }
+
+    private void executeBlock(List<Stmt> statements, Environment environment) {
+        Environment previous = this.environment;
+        try {
+            this.environment = environment;
+
+            for (final var statement : statements) {
+                execute(statement);
+            }
+        } finally {
+            this.environment = previous;
+        }
+    }
 }

@@ -76,11 +76,19 @@ def main():
     else:
         outputDir = sys.argv[1]
         define_ast(outputDir, "Expr", [
+            "Assign      : Token name, Expr value",
             "Binary      : Expr left, Token operator, Expr right",
             "Grouping    : Expr expression",
             "Literal     : Object value",
             "Unary       : Token operator, Expr right",
-            "Conditional : Expr condition, Expr thenBranch, Expr elseBranch"
+            "Conditional : Expr condition, Expr thenBranch, Expr elseBranch",
+            "Variable    : Token name"
+        ])
+        define_ast(outputDir, "Stmt", [
+            "Block       : List<Stmt> statements",
+            "Expression  : Expr expression",
+            "Print       : Expr expression",
+            "Var         : Token name, Expr initializer"
         ])
 
 
