@@ -16,6 +16,16 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         }
     }
 
+    public String interpret(Expr expression) {
+        try {
+            var value = evaluate(expression);
+            return stringify(value);
+        } catch (RuntimeError error) {
+            Lox.runtimeError(error);
+            return null;
+        }
+    }
+
     @Override
     public Object visitAssignExpr(Expr.Assign expr) {
         final var value = evaluate(expr.value);
@@ -201,11 +211,11 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
     @Override
     public Void visitVarStmt(Stmt.Var stmt) {
-        Object initialValue = null;
-        if (stmt.initializer != null) {
-            initialValue = evaluate(stmt.initializer);
+        if (stmt.initializer == null) {
+            environment.define(stmt.name.lexeme);
+            return null;
         }
-        environment.define(stmt.name.lexeme, initialValue);
+        environment.define(stmt.name.lexeme, evaluate(stmt.initializer));
         return null;
     }
 

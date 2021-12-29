@@ -41,13 +41,24 @@ public class Lox {
         var reader = new BufferedReader(input);
 
         while (true) {
-            System.out.print("> ");
-            final var line = reader.readLine();
-            if (line == null) {
-                break;
-            }
-            run(line);
             hadError = false;
+
+            System.out.print("> ");
+            final var scanner = new Scanner(reader.readLine());
+            final var tokens = scanner.scanTokens();
+            final var parser = new Parser(tokens);
+            final var syntax = parser.parseRepl();
+            if (hadError) {
+                continue;
+            }
+            if (syntax instanceof List) {
+                interpreter.interpret((List<Stmt>)syntax);
+            } else {
+                final var result = interpreter.interpret((Expr)syntax);
+                if (result != null) {
+                    System.out.println("= " + result);
+                }
+            }
         }
     }
 
