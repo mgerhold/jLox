@@ -15,6 +15,8 @@ def define_type(file, baseName, className, fieldList):
     # constructor
     write_line(file, f"    {className}({fieldList}) {{")
     fields = fieldList.split(",")
+    if len(fields) == 1 and len(fields[0].strip()) == 0:
+        fields = []
     for field in fields:
         name = field.strip().split(" ")[1]
         write_line(file, f"      this.{name} = {name};")
@@ -91,6 +93,8 @@ def main():
             "While       : Expr loopCondition, Stmt loopBody",
             "Print       : Expr expression",
             "Block       : List<Stmt> statements",
+            "Break       :",
+            "Continue    :",
             "Var         : Token name, Expr initializer"
         ])
 

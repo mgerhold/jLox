@@ -14,12 +14,16 @@ statement      → exprStmt
                | ifStmt
                | whileStmt
                | forStmt
+               | breakStmt
+               | continueStmt
                | printStmt
                | block ;
 exprStmt       → expression ";" ;
 ifStmt         → "if" "(" expression ")" statement ( "else" statement )? ;
 whileStmt      → "while" "(" expression ")" statement ;
 forStmt        → "for" "(" ( varDecl | exprStmt | ";" ) expression? ";" expression? ")" statement ;
+breakStmt      → "break" ";" ;
+continueStmt   → "continue" ";" ;
 printStmt      → "print" expression ";" ;
 block          → "{" declaration* "}" ;
 expression     → assignment ;
@@ -48,6 +52,7 @@ public class Parser {
     private int current = 0;
     private boolean allowExpression;
     private boolean foundExpression = false;
+    private int loopNestingLevel = 0;
 
     Parser(List<Token> tokens) {
         this.tokens = tokens;
@@ -105,6 +110,7 @@ public class Parser {
     //                | ifStmt
     //                | whileStmt
     //                | forStmt
+    //                | breakStmt
     //                | printStmt
     //                | block ;
     private Stmt statement() {
@@ -116,6 +122,12 @@ public class Parser {
         }
         if (match(FOR)) {
             return forStmt();
+        }
+        if (match(BREAK)) {
+            return breakStmt();
+        }
+        if (match(CONTINUE)) {
+            return continueStmt();
         }
         if (match(PRINT)) {
             return printStatement();
@@ -144,7 +156,9 @@ public class Parser {
         consume(LEFT_PAREN, "Expected '(' after while.");
         final var loopCondition = expression();
         consume(RIGHT_PAREN, "Expected ')' after condition of while-statement.");
+        ++loopNestingLevel;
         final var loopBody = statement();
+        --loopNestingLevel;
         return new Stmt.While(loopCondition, loopBody);
     }
 
@@ -167,7 +181,9 @@ public class Parser {
             step = expression();
         }
         consume(RIGHT_PAREN, "Expected ')' before body of for-loop.");
+        ++loopNestingLevel;
         final var loopBody = statement();
+        --loopNestingLevel;
         final var statements = new ArrayList<Stmt>();
         if (initialization != null) {
             statements.add(initialization);
@@ -179,6 +195,24 @@ public class Parser {
         }
         statements.add(new Stmt.While(condition != null ? condition : new Expr.Literal(true), new Stmt.Block(bodyStatements)));
         return new Stmt.Block(statements);
+    }
+
+    // breakStmt      → "break" ";" ;
+    private Stmt breakStmt() {
+        if (loopNestingLevel == 0) {
+            throw error(previous(), "'break' may only appear inside loops.");
+        }
+        consume(SEMICOLON, "Expected ';' after break.");
+        return new Stmt.Break();
+    }
+
+    // continueStmt   → "continue" ";" ;
+    private Stmt continueStmt() {
+        if (loopNestingLevel == 0) {
+            throw error(previous(), "'continue' may only appear inside loops.");
+        }
+        consume(SEMICOLON, "Expected ';' after continue.");
+        return new Stmt.Continue();
     }
 
     // printStmt      → "print" expression ";" ;

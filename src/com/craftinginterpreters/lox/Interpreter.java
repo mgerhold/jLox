@@ -4,6 +4,9 @@ import java.util.List;
 
 public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
+    private static class LoopBreak extends RuntimeException { }
+    private static class LoopContinue extends RuntimeException { }
+
     private Environment environment = new Environment();
 
     public void interpret(List<Stmt> statements) {
@@ -220,6 +223,16 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     }
 
     @Override
+    public Void visitBreakStmt(Stmt.Break stmt) {
+        throw new LoopBreak();
+    }
+
+    @Override
+    public Void visitContinueStmt(Stmt.Continue stmt) {
+        throw new LoopContinue();
+    }
+
+    @Override
     public Void visitExpressionStmt(Stmt.Expression stmt) {
         evaluate(stmt.expression);
         return null;
@@ -239,7 +252,13 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     @Override
     public Void visitWhileStmt(Stmt.While stmt) {
         while (isTruthy(evaluate(stmt.loopCondition))) {
-            execute(stmt.loopBody);
+            try {
+                execute(stmt.loopBody);
+            } catch (LoopBreak e) {
+                break;
+            } catch (LoopContinue e) {
+                continue;
+            }
         }
         return null;
     }
