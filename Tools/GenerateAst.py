@@ -78,6 +78,7 @@ def main():
         define_ast(outputDir, "Expr", [
             "Assign      : Token name, Expr value",
             "Binary      : Expr left, Token operator, Expr right",
+            "Logical     : Expr left, Token operator, Expr right",
             "Grouping    : Expr expression",
             "Literal     : Object value",
             "Unary       : Token operator, Expr right",
@@ -85,9 +86,11 @@ def main():
             "Variable    : Token name"
         ])
         define_ast(outputDir, "Stmt", [
-            "Block       : List<Stmt> statements",
             "Expression  : Expr expression",
+            "If          : Expr condition, Stmt thenBranch, Stmt elseBranch",
+            "While       : Expr loopCondition, Stmt loopBody",
             "Print       : Expr expression",
+            "Block       : List<Stmt> statements",
             "Var         : Token name, Expr initializer"
         ])
 

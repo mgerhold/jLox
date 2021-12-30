@@ -11,16 +11,24 @@ declaration    → varDecl
                | statement ;
 varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
 statement      → exprStmt
+               | ifStmt
+               | whileStmt
+               | forStmt
                | printStmt
                | block ;
 exprStmt       → expression ";" ;
+ifStmt         → "if" "(" expression ")" statement ( "else" statement )? ;
+whileStmt      → "while" "(" expression ")" statement ;
+forStmt        → "for" "(" ( varDecl | exprStmt | ";" ) expression? ";" expression? ")" statement ;
 printStmt      → "print" expression ";" ;
 block          → "{" declaration* "}" ;
 expression     → assignment ;
 assignment     → IDENTIFIER "=" assignment
                | sequence ;
 sequence       → conditional ( "," conditional)* ;
-conditional    → equality ( "?" expression ":" conditional )? ;
+conditional    → logical_or ( "?" expression ":" conditional )? ;
+logical_or     → logical_and ( "or" logical_and )* ;
+logical_and    → equality ( "and" equality )* ;
 equality       → comparison ( ( "!=" | "==" ) comparison )* ;
 comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 term           → factor ( ( "-" | "+" ) factor )* ;
@@ -94,9 +102,21 @@ public class Parser {
     }
 
     // statement      → exprStmt
+    //                | ifStmt
+    //                | whileStmt
+    //                | forStmt
     //                | printStmt
     //                | block ;
     private Stmt statement() {
+        if (match(IF)) {
+            return ifStmt();
+        }
+        if (match(WHILE)) {
+            return whileStmt();
+        }
+        if (match(FOR)) {
+            return forStmt();
+        }
         if (match(PRINT)) {
             return printStatement();
         }
@@ -104,6 +124,61 @@ public class Parser {
             return new Stmt.Block(block());
         }
         return expressionStatement();
+    }
+
+    // ifStmt         → "if" "(" expression ")" statement ( "else" statement )? ;
+    private Stmt ifStmt() {
+        consume(LEFT_PAREN, "Expected '(' after if.");
+        final var condition = expression();
+        consume(RIGHT_PAREN, "Expected ')' after condition of if-statement.");
+        final var thenBranch = statement();
+        Stmt elseBranch = null;
+        if (match(ELSE)) {
+            elseBranch = statement();
+        }
+        return new Stmt.If(condition, thenBranch, elseBranch);
+    }
+
+    // whileStmt      → "while" "(" expression ")" statement ;
+    private Stmt whileStmt() {
+        consume(LEFT_PAREN, "Expected '(' after while.");
+        final var loopCondition = expression();
+        consume(RIGHT_PAREN, "Expected ')' after condition of while-statement.");
+        final var loopBody = statement();
+        return new Stmt.While(loopCondition, loopBody);
+    }
+
+    // forStmt        → "for" "(" ( varDecl | exprStmt | ";" ) expression? ";" expression? ")" statement ;
+    private Stmt forStmt() {
+        consume(LEFT_PAREN, "Expected '(' after for.");
+        Stmt initialization = null;
+        if (match(VAR)) {
+            initialization = variableDeclaration();
+        } else if (!match(SEMICOLON)) {
+            initialization = expressionStatement();
+        }
+        Expr condition = null;
+        if (!check(SEMICOLON)) {
+            condition = expression();
+        }
+        consume(SEMICOLON, "Expected ';' after condition in for-loop.");
+        Expr step = null;
+        if (!check(RIGHT_PAREN)) {
+            step = expression();
+        }
+        consume(RIGHT_PAREN, "Expected ')' before body of for-loop.");
+        final var loopBody = statement();
+        final var statements = new ArrayList<Stmt>();
+        if (initialization != null) {
+            statements.add(initialization);
+        }
+        final var bodyStatements = new ArrayList<Stmt>();
+        bodyStatements.add(loopBody);
+        if (step != null) {
+            bodyStatements.add(new Stmt.Expression(step));
+        }
+        statements.add(new Stmt.While(condition != null ? condition : new Expr.Literal(true), new Stmt.Block(bodyStatements)));
+        return new Stmt.Block(statements);
     }
 
     // printStmt      → "print" expression ";" ;
@@ -172,9 +247,9 @@ public class Parser {
         return expr;
     }
 
-    // conditional    → equality ( "?" expression ":" conditional )? ;
+    // conditional    → logical_or ( "?" expression ":" conditional )? ;
     private Expr conditional() {
-        Expr expr = equality();
+        Expr expr = logicalOr();
         if (match(QUESTION_MARK)) {
             Expr thenBranch = expression();
             consume(COLON, "Expected ':' after then-branch of conditional expression.");
@@ -185,9 +260,27 @@ public class Parser {
         return expr;
     }
 
+    // logical_or     → logical_and ( "or" logical_and )* ;
+    private Expr logicalOr() {
+        var expression = logicalAnd();
+        while (match(OR)) {
+             expression = new Expr.Logical(expression, previous(), logicalAnd());
+        }
+        return expression;
+    }
+
+    // logical_and    → equality ( "and" equality )* ;
+    private Expr logicalAnd() {
+        var expression = equality();
+        while (match(AND)) {
+            expression = new Expr.Logical(expression, previous(), equality());
+        }
+        return expression;
+    }
+
     // equality       → comparison ( ( "!=" | "==" ) comparison )* ;
     private Expr equality() {
-        Expr expr = comparison();
+        var expr = comparison();
 
         while (match(BANG_EQUAL, EQUAL_EQUAL)) {
             Token operator = previous();

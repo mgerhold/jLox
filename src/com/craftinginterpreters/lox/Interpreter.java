@@ -39,6 +39,8 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         final var right = evaluate(expr.right);
 
         switch (expr.operator.type) {
+            case COMMA:
+                return right;
             case BANG_EQUAL:
                 return !isEqual(left, right);
             case EQUAL_EQUAL:
@@ -87,6 +89,26 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
                 }
 
                 throw new RuntimeError(expr.operator, "Operator '+' is only supported for numbers and strings.");
+            default:
+                return null; // unreachable
+        }
+    }
+
+    @Override
+    public Object visitLogicalExpr(Expr.Logical expr) {
+        final var leftEvaluated = evaluate(expr.left);
+        final var leftTruthyness = isTruthy(leftEvaluated);
+        switch (expr.operator.type) {
+            case AND:
+                if (!leftTruthyness) {
+                    return leftEvaluated;
+                }
+                return evaluate(expr.right);
+            case OR:
+                if (leftTruthyness) {
+                    return leftEvaluated;
+                }
+                return evaluate(expr.right);
             default:
                 return null; // unreachable
         }
@@ -200,6 +222,25 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     @Override
     public Void visitExpressionStmt(Stmt.Expression stmt) {
         evaluate(stmt.expression);
+        return null;
+    }
+
+    @Override
+    public Void visitIfStmt(Stmt.If stmt) {
+        final var conditionSatisfied = isTruthy(evaluate(stmt.condition));
+        if (conditionSatisfied) {
+            execute(stmt.thenBranch);
+        } else if (stmt.elseBranch != null) {
+            execute(stmt.elseBranch);
+        }
+        return null;
+    }
+
+    @Override
+    public Void visitWhileStmt(Stmt.While stmt) {
+        while (isTruthy(evaluate(stmt.loopCondition))) {
+            execute(stmt.loopBody);
+        }
         return null;
     }
 
