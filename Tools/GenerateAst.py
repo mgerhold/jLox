@@ -81,6 +81,7 @@ def main():
             "Assign      : Token name, Expr value",
             "Binary      : Expr left, Token operator, Expr right",
             "Logical     : Expr left, Token operator, Expr right",
+            "Call        : Expr callee, Token paren, List<Expr> arguments",
             "Grouping    : Expr expression",
             "Literal     : Object value",
             "Unary       : Token operator, Expr right",
@@ -95,7 +96,9 @@ def main():
             "Block       : List<Stmt> statements",
             "Break       :",
             "Continue    :",
-            "Var         : Token name, Expr initializer"
+            "Return      : Expr value",
+            "Var         : Token name, Expr initializer",
+            "Fun         : Token name, List<Token> parameters, List<Stmt> functionBody"
         ])
 
 

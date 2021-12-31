@@ -1,14 +1,18 @@
 package com.craftinginterpreters.lox;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import static com.craftinginterpreters.lox.TokenType.*;
 
 /*
 program        → declaration* EOF ;
-declaration    → varDecl
+declaration    → funDecl,
+               | varDecl
                | statement ;
+funDecl        → "fun" IDENTIFIER "(" parameters? ")" block ;
+parameters     → IDENTIFIER ( "," IDENTIFIER )* ;
 varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
 statement      → exprStmt
                | ifStmt
@@ -16,6 +20,7 @@ statement      → exprStmt
                | forStmt
                | breakStmt
                | continueStmt
+               | returnStmt
                | printStmt
                | block ;
 exprStmt       → expression ";" ;
@@ -24,6 +29,7 @@ whileStmt      → "while" "(" expression ")" statement ;
 forStmt        → "for" "(" ( varDecl | exprStmt | ";" ) expression? ";" expression? ")" statement ;
 breakStmt      → "break" ";" ;
 continueStmt   → "continue" ";" ;
+returnStmt     → "return" expression? ";" ;
 printStmt      → "print" expression ";" ;
 block          → "{" declaration* "}" ;
 expression     → assignment ;
@@ -38,7 +44,9 @@ comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 term           → factor ( ( "-" | "+" ) factor )* ;
 factor         → unary ( ( "/" | "*" ) unary )* ;
 unary          → ( "!" | "-" ) unary
-               | primary ;
+               | call ;
+call           → primary ( "(" arguments? ")" )* ;
+arguments      → conditional ("," conditional)* ;
 primary        → "true" | "false" | "nil"
                | NUMBER | STRING
                | "(" expression ")"
@@ -53,6 +61,7 @@ public class Parser {
     private boolean allowExpression;
     private boolean foundExpression = false;
     private int loopNestingLevel = 0;
+    private int functionNestingLevel = 0;
 
     Parser(List<Token> tokens) {
         this.tokens = tokens;
@@ -81,10 +90,14 @@ public class Parser {
         return statements;
     }
 
-    // declaration    → varDecl
-    //                | statement ;
+    // declaration    → funDecl,
+    //               | varDecl
+    //               | statement ;
     private Stmt declaration() {
         try {
+            if (match(FUN)) {
+                return functionDeclaration();
+            }
             if (match(VAR)) {
                 return variableDeclaration();
             }
@@ -93,6 +106,34 @@ public class Parser {
             synchronize();
             return null;
         }
+    }
+
+    //funDecl        → "fun" IDENTIFIER "(" parameters? ")" block ;
+    private Stmt functionDeclaration() {
+        final var name = consume(IDENTIFIER, "Expected identifier after 'fun'.");
+        consume(LEFT_PAREN, "Expected '(' before parameter list of function declaration.");
+        final var parameters = parameters();
+        consume(RIGHT_PAREN, "Expected ')' after parameter list of function declaration.");
+        consume(LEFT_BRACE, "Expected '{' to start function body.");
+        ++functionNestingLevel;
+        final var functionBody = block();
+        --functionNestingLevel;
+        return new Stmt.Fun(name, parameters, functionBody);
+    }
+
+    // parameters     → IDENTIFIER ( "," IDENTIFIER )* ;
+    private List<Token> parameters() {
+        final var parameters = new ArrayList<Token>();
+        do {
+            if (check(RIGHT_PAREN)) { // allow for trailing comma
+                break;
+            }
+            if (parameters.size() >= 255) {
+                error(peek(), "Maximum number of function parameters exceeded. Maximum is 255.");
+            }
+            parameters.add(consume(IDENTIFIER, "Expected identifier token inside parameter list."));
+        } while (match(COMMA));
+        return parameters;
     }
 
     // varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
@@ -107,12 +148,14 @@ public class Parser {
     }
 
     // statement      → exprStmt
-    //                | ifStmt
-    //                | whileStmt
-    //                | forStmt
-    //                | breakStmt
-    //                | printStmt
-    //                | block ;
+    //               | ifStmt
+    //               | whileStmt
+    //               | forStmt
+    //               | breakStmt
+    //               | continueStmt
+    //               | returnStmt
+    //               | printStmt
+    //               | block ;
     private Stmt statement() {
         if (match(IF)) {
             return ifStmt();
@@ -128,6 +171,9 @@ public class Parser {
         }
         if (match(CONTINUE)) {
             return continueStmt();
+        }
+        if (match(RETURN)) {
+            return returnStmt();
         }
         if (match(PRINT)) {
             return printStatement();
@@ -213,6 +259,19 @@ public class Parser {
         }
         consume(SEMICOLON, "Expected ';' after continue.");
         return new Stmt.Continue();
+    }
+
+    // returnStmt     → "return" ";" ;
+    private Stmt returnStmt() {
+        if (functionNestingLevel == 0) {
+            throw error(previous(), "'return' may only appear inside functions.");
+        }
+        Expr returnValue = null;
+        if (!check(SEMICOLON)) {
+            returnValue = expression();
+        }
+        consume(SEMICOLON, "Expected ';' after return.");
+        return new Stmt.Return(returnValue);
     }
 
     // printStmt      → "print" expression ";" ;
@@ -365,12 +424,51 @@ public class Parser {
     }
 
     // unary          → ( "!" | "-" ) unary
-    //               | primary ;
+    //               | call ;
     private Expr unary() {
         if (match(BANG, MINUS)) {
             return new Expr.Unary(previous(), unary());
         }
-        return primary();
+        return call();
+    }
+
+    // call           → primary ( "(" arguments? ")" )* ;
+    private Expr call() {
+        var expression = primary();
+        while (match(LEFT_PAREN)) {
+            final var arguments = (check(RIGHT_PAREN) ? Collections.<Expr>emptyList() : arguments());
+            final var closingParen = consume(RIGHT_PAREN, "Expected ')' at the end of the function call argument list.");
+            expression = new Expr.Call(expression, closingParen, arguments);
+        }
+        return expression;
+        /*
+        Expr expr = primary();
+
+        while (true) {
+          if (match(LEFT_PAREN)) {
+            expr = finishCall(expr);
+          } else {
+            break;
+          }
+        }
+
+        return expr;
+         */
+    }
+
+    // arguments      → conditional ("," conditional)* ;
+    private List<Expr> arguments() {
+        final List<Expr> arguments = new ArrayList<>();
+        do {
+            if (check(RIGHT_PAREN)) { // allow for trailing comma
+                break;
+            }
+            if (arguments.size() >= 255) {
+                error(peek(), "Maximum number of function call arguments exceeded. Maximum is 255.");
+            }
+            arguments.add(conditional());
+        } while(match(COMMA));
+        return arguments;
     }
 
     // primary        → "true" | "false" | "nil"

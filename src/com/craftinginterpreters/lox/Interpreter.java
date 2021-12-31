@@ -1,13 +1,46 @@
 package com.craftinginterpreters.lox;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
     private static class LoopBreak extends RuntimeException { }
     private static class LoopContinue extends RuntimeException { }
+    public static class Return extends RuntimeException {
+        private final Object value;
 
-    private Environment environment = new Environment();
+        public Return(Object value) {
+            super(null, null, false, false);
+            this.value = value;
+        }
+
+        public Object getValue() {
+            return value;
+        }
+    }
+
+    final Environment globals = new Environment();
+    private Environment environment = globals;
+
+    Interpreter() {
+        globals.defineByName("clock", new LoxCallable() {
+            @Override
+            public int arity() {
+                return 0;
+            }
+
+            @Override
+            public Object call(Interpreter interpreter, List<Object> arguments) {
+                return (double)System.currentTimeMillis() / 1000.0;
+            }
+
+            @Override
+            public String toString() {
+                return "<native fn>";
+            }
+        });
+    }
 
     public void interpret(List<Stmt> statements) {
         try {
@@ -115,6 +148,26 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             default:
                 return null; // unreachable
         }
+    }
+
+    @Override
+    public Object visitCallExpr(Expr.Call expr) {
+        final var callee = evaluate(expr.callee);
+
+        final var arguments = new ArrayList<Object>();
+        for (final var expression : expr.arguments) {
+            arguments.add(evaluate(expression));
+        }
+
+        if (!(callee instanceof LoxCallable)) {
+            throw new RuntimeError(expr.paren, "Can only call functions and classes.");
+        }
+        final var function = (LoxCallable)callee;
+        if (arguments.size() != function.arity()) {
+            throw new RuntimeError(expr.paren, "Expected " + function.arity() + " arguments, got "
+                    + arguments.size() + ".");
+        }
+        return function.call(this, arguments);
     }
 
     @Override
@@ -233,6 +286,11 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     }
 
     @Override
+    public Void visitReturnStmt(Stmt.Return stmt) {
+        throw new Return(stmt.value != null ? evaluate(stmt.value) : null);
+    }
+
+    @Override
     public Void visitExpressionStmt(Stmt.Expression stmt) {
         evaluate(stmt.expression);
         return null;
@@ -272,14 +330,21 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     @Override
     public Void visitVarStmt(Stmt.Var stmt) {
         if (stmt.initializer == null) {
-            environment.define(stmt.name.lexeme);
+            environment.define(stmt.name);
             return null;
         }
-        environment.define(stmt.name.lexeme, evaluate(stmt.initializer));
+        environment.define(stmt.name, evaluate(stmt.initializer));
         return null;
     }
 
-    private void executeBlock(List<Stmt> statements, Environment environment) {
+    @Override
+    public Void visitFunStmt(Stmt.Fun stmt) {
+        final var function = new LoxFunction(stmt, environment);
+        environment.define(stmt.name, function);
+        return null;
+    }
+
+    void executeBlock(List<Stmt> statements, Environment environment) {
         Environment previous = this.environment;
         try {
             this.environment = environment;

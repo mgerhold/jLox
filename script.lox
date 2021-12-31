@@ -1,3 +1,7 @@
+fun roin() {
+    print "Hello Roin!";
+}
+
 var a = 0;
 var temp;
 
@@ -5,4 +9,17 @@ for (var b = 1; a < 10000; b = temp + b) {
   print a;
   temp = a;
   a = b;
+}
+
+print f(1, 2);
+roin();
+g();
+
+fun f(a, b) {
+    var c = a + b;
+    return c;
+}
+
+fun g() {
+    print "Test";
 }

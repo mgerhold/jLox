@@ -18,11 +18,19 @@ public class Environment {
         this.enclosing = enclosing;
     }
 
-    void define(String name) {
-        values.put(name, new Uninitialized());
+    void define(Token name) {
+        define(name, null);
     }
 
-    void define(String name, Object value) {
+    void define(Token name, Object value) {
+        if (values.containsKey(name.lexeme)) {
+            throw new RuntimeError(name, "A variable named '" + name.lexeme +  "' has already been declared before.");
+        }
+        values.put(name.lexeme, value);
+    }
+
+    void defineByName(String name, Object value) {
+        assert !values.containsKey(name);
         values.put(name, value);
     }
 
