@@ -17,6 +17,7 @@ abstract class Stmt {
     R visitReturnStmt(Return stmt);
     R visitVarStmt(Var stmt);
     R visitFunStmt(Fun stmt);
+    R visitClassStmt(Class stmt);
   }
 
   static class Expression extends Stmt {
@@ -155,6 +156,21 @@ abstract class Stmt {
     final Token name;
     final List<Token> parameters;
     final List<Stmt> functionBody;
+  }
+
+  static class Class extends Stmt {
+    Class(Token name, List<Stmt.Fun> methods) {
+      this.name = name;
+      this.methods = methods;
+    }
+
+    @Override
+    <R> R accept(Visitor<R> visitor) {
+      return visitor.visitClassStmt(this);
+    }
+
+    final Token name;
+    final List<Stmt.Fun> methods;
   }
 
   abstract <R> R accept(Visitor<R> visitor);

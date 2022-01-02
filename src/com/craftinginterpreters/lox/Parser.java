@@ -8,10 +8,13 @@ import static com.craftinginterpreters.lox.TokenType.*;
 
 /*
 program        → declaration* EOF ;
-declaration    → funDecl,
+declaration    → classDecl,
+               | funDecl,
                | varDecl
                | statement ;
-funDecl        → "fun" IDENTIFIER "(" parameters? ")" block ;
+classDecl      → "class" IDENTIFIER "{" function* "}" ;
+funDecl        → "fun" function ;
+function       → IDENTIFIER "(" parameters? ")" block ;
 parameters     → IDENTIFIER ( "," IDENTIFIER )* ;
 varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
 statement      → exprStmt
@@ -33,8 +36,8 @@ returnStmt     → "return" expression? ";" ;
 printStmt      → "print" expression ";" ;
 block          → "{" declaration* "}" ;
 expression     → assignment ;
-assignment     → IDENTIFIER "=" assignment
-               | sequence ;
+assignment     → ( call "." )? IDENTIFIER "=" assignment
+               | logic_or ;
 sequence       → conditional ( "," conditional)* ;
 conditional    → logical_or ( "?" expression ":" conditional )? ;
 logical_or     → logical_and ( "or" logical_and )* ;
@@ -45,16 +48,17 @@ term           → factor ( ( "-" | "+" ) factor )* ;
 factor         → unary ( ( "/" | "*" ) unary )* ;
 unary          → ( "!" | "-" ) unary
                | call ;
-call           → primary ( "(" arguments? ")" )* ;
+call           → primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
 arguments      → conditional ("," conditional)* ;
-primary        → "true" | "false" | "nil"
+primary        → "true" | "false" | "nil" | "this"
                | NUMBER | STRING
                | "(" expression ")"
                | IDENTIFIER ;
  */
 
 public class Parser {
-    private static class ParseError extends RuntimeException {}
+    private static class ParseError extends RuntimeException {
+    }
 
     private final List<Token> tokens;
     private int current = 0;
@@ -62,6 +66,7 @@ public class Parser {
     private boolean foundExpression = false;
     private int loopNestingLevel = 0;
     private int functionNestingLevel = 0;
+    private int classNestingLevel = 0;
 
     Parser(List<Token> tokens) {
         this.tokens = tokens;
@@ -90,11 +95,15 @@ public class Parser {
         return statements;
     }
 
-    // declaration    → funDecl,
-    //               | varDecl
-    //               | statement ;
+    // declaration    → classDecl,
+    //                | funDecl,
+    //                | varDecl
+    //                | statement ;
     private Stmt declaration() {
         try {
+            if (match(CLASS)) {
+                return classDeclaration();
+            }
             if (match(FUN)) {
                 return functionDeclaration();
             }
@@ -108,13 +117,34 @@ public class Parser {
         }
     }
 
-    //funDecl        → "fun" IDENTIFIER "(" parameters? ")" block ;
+    // classDecl      → "class" IDENTIFIER "{" function* "}" ;
+    private Stmt classDeclaration() {
+        final var identifier = consume(IDENTIFIER, "Expected identifier after 'class'.");
+        consume(LEFT_BRACE, "Expected '{' after class identifier.");
+        ++classNestingLevel;
+        final var methods = new ArrayList<Stmt.Fun>();
+        while (!check(RIGHT_BRACE) && !isAtEnd()) {
+            final var method = function("method");
+            assert method instanceof Stmt.Fun;
+            methods.add((Stmt.Fun) method);
+        }
+        consume(RIGHT_BRACE, "Expected '}' after class declaration body.");
+        --classNestingLevel;
+        return new Stmt.Class(identifier, methods);
+    }
+
+    // funDecl        → "fun" function ;
     private Stmt functionDeclaration() {
-        final var name = consume(IDENTIFIER, "Expected identifier after 'fun'.");
-        consume(LEFT_PAREN, "Expected '(' before parameter list of function declaration.");
+        return function("fun");
+    }
+
+    // function       → IDENTIFIER "(" parameters? ")" block ;
+    private Stmt function(String declarationKeyword) {
+        final var name = consume(IDENTIFIER, "Expected " + declarationKeyword + " identifier.");
+        consume(LEFT_PAREN, "Expected '(' before parameter list of " + declarationKeyword + " declaration.");
         final var parameters = parameters();
-        consume(RIGHT_PAREN, "Expected ')' after parameter list of function declaration.");
-        consume(LEFT_BRACE, "Expected '{' to start function body.");
+        consume(RIGHT_PAREN, "Expected ')' after parameter list of " + declarationKeyword + " declaration.");
+        consume(LEFT_BRACE, "Expected '{' to start " + declarationKeyword + " body.");
         ++functionNestingLevel;
         final var functionBody = block();
         --functionNestingLevel;
@@ -307,7 +337,7 @@ public class Parser {
         return assignment();
     }
 
-    // assignment     → IDENTIFIER "=" assignment
+    // assignment     → ( call "." )? IDENTIFIER "=" assignment
     //                | sequence ;
     private Expr assignment() {
         final var expr = sequence();
@@ -316,8 +346,11 @@ public class Parser {
             final var value = assignment();
 
             if (expr instanceof Expr.Variable) {
-                final var name = ((Expr.Variable)expr).name;
+                final var name = ((Expr.Variable) expr).name;
                 return new Expr.Assign(name, value);
+            } else if (expr instanceof Expr.Get) {
+                final var get = (Expr.Get)expr;
+                return new Expr.Set(get.object, get.name, value);
             }
             // the result of the call to error(), which is an exception, is purposely not thrown
             // because the parser should not enter "panic mode" here
@@ -357,7 +390,7 @@ public class Parser {
     private Expr logicalOr() {
         var expression = logicalAnd();
         while (match(OR)) {
-             expression = new Expr.Logical(expression, previous(), logicalAnd());
+            expression = new Expr.Logical(expression, previous(), logicalAnd());
         }
         return expression;
     }
@@ -432,28 +465,26 @@ public class Parser {
         return call();
     }
 
-    // call           → primary ( "(" arguments? ")" )* ;
+    private Expr finishCall(Expr expression) {
+        final var arguments = (check(RIGHT_PAREN) ? Collections.<Expr>emptyList() : arguments());
+        final var closingParen = consume(RIGHT_PAREN, "Expected ')' at the end of the function call argument list.");
+        return new Expr.Call(expression, closingParen, arguments);
+    }
+
+    // call           → primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
     private Expr call() {
-        var expression = primary();
-        while (match(LEFT_PAREN)) {
-            final var arguments = (check(RIGHT_PAREN) ? Collections.<Expr>emptyList() : arguments());
-            final var closingParen = consume(RIGHT_PAREN, "Expected ')' at the end of the function call argument list.");
-            expression = new Expr.Call(expression, closingParen, arguments);
+        Expr expression = primary();
+        while (true) {
+            if (match(LEFT_PAREN)) {
+                expression = finishCall(expression);
+            } else if (match(DOT)) {
+                final var name = consume(IDENTIFIER, "Expected property name after '.'.");
+                expression = new Expr.Get(expression, name);
+            } else {
+                break;
+            }
         }
         return expression;
-        /*
-        Expr expr = primary();
-
-        while (true) {
-          if (match(LEFT_PAREN)) {
-            expr = finishCall(expr);
-          } else {
-            break;
-          }
-        }
-
-        return expr;
-         */
     }
 
     // arguments      → conditional ("," conditional)* ;
@@ -467,11 +498,11 @@ public class Parser {
                 error(peek(), "Maximum number of function call arguments exceeded. Maximum is 255.");
             }
             arguments.add(conditional());
-        } while(match(COMMA));
+        } while (match(COMMA));
         return arguments;
     }
 
-    // primary        → "true" | "false" | "nil"
+    // primary        → "true" | "false" | "nil" | "this"
     //                | NUMBER | STRING
     //                | "(" expression ")"
     //                | IDENTIFIER ;
@@ -484,6 +515,12 @@ public class Parser {
         }
         if (match(NIL)) {
             return new Expr.Literal(null);
+        }
+        if (match(THIS)) {
+            if (classNestingLevel <= 0) {
+                throw error(previous(), "'this' can only be used inside class methods.");
+            }
+            return new Expr.This(previous());
         }
         if (match(NUMBER, STRING)) {
             return new Expr.Literal(previous().literal);

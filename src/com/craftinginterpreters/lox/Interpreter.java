@@ -180,6 +180,36 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     }
 
     @Override
+    public Object visitGetExpr(Expr.Get expr) {
+        // myObject.getOtherObject().property
+        final var object = evaluate(expr.object);
+        if (object instanceof LoxInstance) {
+            return ((LoxInstance)object).get(expr.name);
+        }
+
+        throw new RuntimeError(expr.name, "Cannot access property on non-class-instance.");
+    }
+
+    @Override
+    public Object visitSetExpr(Expr.Set expr) {
+        final var value = evaluate(expr.value);
+        final var object = evaluate(expr.object);
+
+        if (object instanceof LoxInstance) {
+            final var instance = (LoxInstance)object;
+            instance.set(expr.name, value);
+            return value;
+        }
+
+        throw new RuntimeError(expr.name, "Expression does not evaluate to an instance of an object.");
+    }
+
+    @Override
+    public Object visitThisExpr(Expr.This expr) {
+        return lookUpVariable(expr.keyword, expr);
+    }
+
+    @Override
     public Object visitGroupingExpr(Expr.Grouping expr) {
         return evaluate(expr.expression);
     }
@@ -366,6 +396,20 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     public Void visitFunStmt(Stmt.Fun stmt) {
         final var function = new LoxFunction(stmt, environment);
         environment.define(stmt.name, function);
+        return null;
+    }
+
+    @Override
+    public Void visitClassStmt(Stmt.Class stmt) {
+        environment.define(stmt.name);
+
+        final var methods = new HashMap<String, LoxFunction>();
+        for (final var method : stmt.methods) {
+            final var function = new LoxFunction(method, environment);
+            methods.put(method.name.lexeme, function);
+        }
+        final var klass = new LoxClass(stmt.name.lexeme, methods);
+        environment.assign(stmt.name, klass);
         return null;
     }
 

@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Stack;
+import static com.craftinginterpreters.lox.FunctionType.*;
 
 public class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
     private enum VariableState {
@@ -92,6 +93,25 @@ public class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
         for (final var expression : expr.arguments) {
             resolve(expression);
         }
+        return null;
+    }
+
+    @Override
+    public Void visitGetExpr(Expr.Get expr) {
+        resolve(expr.object);
+        return null;
+    }
+
+    @Override
+    public Void visitSetExpr(Expr.Set expr) {
+        resolve(expr.object);
+        resolve(expr.value);
+        return null;
+    }
+
+    @Override
+    public Void visitThisExpr(Expr.This expr) {
+        resolveLocal(expr, expr.keyword);
         return null;
     }
 
@@ -194,7 +214,7 @@ public class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
         return null;
     }
 
-    private void resolveFunction(Stmt.Fun function) {
+    private void resolveFunction(Stmt.Fun function, FunctionType type) {
         beginScope();
         for (final var parameter : function.parameters) {
             declare(parameter.lexeme);
@@ -208,7 +228,25 @@ public class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
     public Void visitFunStmt(Stmt.Fun stmt) {
         declare(stmt.name.lexeme);
         define(stmt.name.lexeme);
-        resolveFunction(stmt);
+        resolveFunction(stmt, FUNCTION);
+        return null;
+    }
+
+    @Override
+    public Void visitClassStmt(Stmt.Class stmt) {
+        declare(stmt.name.lexeme);
+        define(stmt.name.lexeme);
+
+        beginScope();
+
+        scopes.peek().put("this", VariableState.DECLARED);
+
+        for (final var method : stmt.methods) {
+            final var declaration = FunctionType.METHOD;
+            resolveFunction(method, declaration);
+        }
+
+        endScope();
         return null;
     }
 }

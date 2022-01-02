@@ -82,6 +82,9 @@ def main():
             "Binary      : Expr left, Token operator, Expr right",
             "Logical     : Expr left, Token operator, Expr right",
             "Call        : Expr callee, Token paren, List<Expr> arguments",
+            "Get         : Expr object, Token name",
+            "Set         : Expr object, Token name, Expr value",
+            "This        : Token keyword",
             "Grouping    : Expr expression",
             "Literal     : Object value",
             "Unary       : Token operator, Expr right",
@@ -98,7 +101,8 @@ def main():
             "Continue    :",
             "Return      : Expr value",
             "Var         : Token name, Expr initializer",
-            "Fun         : Token name, List<Token> parameters, List<Stmt> functionBody"
+            "Fun         : Token name, List<Token> parameters, List<Stmt> functionBody",
+            "Class       : Token name, List<Stmt.Fun> methods"
         ])
 
 

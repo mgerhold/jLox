@@ -1,14 +1,15 @@
-var a = 10;
+var ref;
+
 {
-    fun printA() { // closure
-        print a;
+    class A {
+        f() {
+            print this.size;
+        }
     }
 
-    printA();
-
-    var a = 42; // shadowing
-
-    printA();
+    var a = A();
+    a.size = 42;
+    ref = a.f;
 }
 
-// Lexer (Scanner) -> static syntax analysis (Parser (=> syntax tree)) -> static semantic analysis -> Interpreter
+ref();
