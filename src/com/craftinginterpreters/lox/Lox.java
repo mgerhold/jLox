@@ -46,14 +46,32 @@ public class Lox {
             System.out.print("> ");
             final var scanner = new Scanner(reader.readLine());
             final var tokens = scanner.scanTokens();
+            if (hadError) {
+                continue;
+            }
+
             final var parser = new Parser(tokens);
             final var syntax = parser.parseRepl();
             if (hadError) {
                 continue;
             }
+
+            final var resolver = new Resolver(interpreter);
+
             if (syntax instanceof List) {
+                resolver.resolve((List<Stmt>)syntax);
+
+                if (hadError) {
+                    continue;
+                }
+
                 interpreter.interpret((List<Stmt>)syntax);
             } else {
+                resolver.resolve((Expr)syntax);
+                if (hadError) {
+                    continue;
+                }
+
                 final var result = interpreter.interpret((Expr)syntax);
                 if (result != null) {
                     System.out.println("= " + result);
@@ -66,8 +84,19 @@ public class Lox {
         final var scanner = new Scanner(source);
         final List<Token> tokens = scanner.scanTokens();
 
+        if (hadError) {
+            return;
+        }
+
         var parser = new Parser(tokens);
         var statements = parser.parse();
+
+        if (hadError) {
+            return;
+        }
+
+        final var resolver = new Resolver(interpreter);
+        resolver.resolve(statements);
 
         if (hadError) {
             return;

@@ -19,7 +19,7 @@ public class Environment {
     }
 
     void define(Token name) {
-        define(name, null);
+        define(name, new Uninitialized());
     }
 
     void define(Token name, Object value) {
@@ -32,6 +32,32 @@ public class Environment {
     void defineByName(String name, Object value) {
         assert !values.containsKey(name);
         values.put(name, value);
+    }
+
+    Object getAt(int distance, String name) {
+        return ancestor(distance).values.get(name);
+    }
+
+    private Environment ancestor(int distance) {
+        var current = this;
+        for (int i = 0; i < distance; ++i) {
+            assert current != null;
+            current = current.enclosing;
+        }
+        assert current != null;
+        return current;
+    }
+
+    boolean contains(Token name) {
+        if (values.containsKey(name.lexeme)) {
+            return true;
+        }
+
+        if (enclosing != null) {
+            return enclosing.contains(name);
+        }
+
+        return false;
     }
 
     Object get(Token name) {
@@ -62,5 +88,13 @@ public class Environment {
         }
 
         throw new RuntimeError(name, "Undefined variable '" + name.lexeme + "'.");
+    }
+
+    void assignAt(int distance, Token name, Object value) {
+        final var environment = ancestor(distance);
+        if (!environment.values.containsKey(name.lexeme)) {
+            throw new RuntimeError(name, "Trying to assign to an undefined variable '" + name.lexeme + "'.");
+        }
+        environment.values.put(name.lexeme, value);
     }
 }
