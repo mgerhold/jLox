@@ -85,6 +85,7 @@ def main():
             "Get         : Expr object, Token name",
             "Set         : Expr object, Token name, Expr value",
             "This        : Token keyword",
+            "Super       : Token keyword, Token method",
             "Grouping    : Expr expression",
             "Literal     : Object value",
             "Unary       : Token operator, Expr right",
@@ -102,7 +103,7 @@ def main():
             "Return      : Expr value",
             "Var         : Token name, Expr initializer",
             "Fun         : Token name, List<Token> parameters, List<Stmt> functionBody",
-            "Class       : Token name, List<Stmt.Fun> methods"
+            "Class       : Token name, Expr.Variable superclass, List<Stmt.Fun> methods"
         ])
 
 

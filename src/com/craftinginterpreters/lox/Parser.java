@@ -3,6 +3,7 @@ package com.craftinginterpreters.lox;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Stack;
 
 import static com.craftinginterpreters.lox.TokenType.*;
 
@@ -12,7 +13,8 @@ declaration    → classDecl,
                | funDecl,
                | varDecl
                | statement ;
-classDecl      → "class" IDENTIFIER "{" function* "}" ;
+classDecl      → "class" IDENTIFIER ( "<" IDENTIFIER )?
+                 "{" function* "}" ;
 funDecl        → "fun" function ;
 function       → IDENTIFIER "(" parameters? ")" block ;
 parameters     → IDENTIFIER ( "," IDENTIFIER )* ;
@@ -53,23 +55,35 @@ arguments      → conditional ("," conditional)* ;
 primary        → "true" | "false" | "nil" | "this"
                | NUMBER | STRING
                | "(" expression ")"
-               | IDENTIFIER ;
+               | IDENTIFIER
+               | "super" "." IDENTIFIER ;
  */
 
 public class Parser {
     private static class ParseError extends RuntimeException {
     }
 
+    private enum NestingType {
+        CLASS,
+        SUBCLASS,
+        FUNCTION,
+        METHOD,
+        INITIALIZER,
+        LOOP,
+    }
+
     private final List<Token> tokens;
     private int current = 0;
     private boolean allowExpression;
     private boolean foundExpression = false;
-    private int loopNestingLevel = 0;
-    private int functionNestingLevel = 0;
-    private int classNestingLevel = 0;
+    private final Stack<NestingType> nestingStack = new Stack<>();
 
     Parser(List<Token> tokens) {
         this.tokens = tokens;
+    }
+
+    int getNestingLevel(NestingType type) {
+        return (int)nestingStack.stream().filter(t -> t == type).count();
     }
 
     List<Stmt> parse() {
@@ -117,20 +131,30 @@ public class Parser {
         }
     }
 
-    // classDecl      → "class" IDENTIFIER "{" function* "}" ;
+    // classDecl      → "class" IDENTIFIER ( "<" IDENTIFIER )?
+    //                  "{" function* "}" ;
     private Stmt classDeclaration() {
         final var identifier = consume(IDENTIFIER, "Expected identifier after 'class'.");
-        consume(LEFT_BRACE, "Expected '{' after class identifier.");
-        ++classNestingLevel;
+        Expr.Variable superclass = null;
+        if (match(LESS)) {
+            superclass = new Expr.Variable(consume(IDENTIFIER, "Expected superclass identifier."));
+        }
+        consume(LEFT_BRACE, "Expected '{' to begin class declaration body.");
+        final var classType = superclass == null ? NestingType.CLASS : NestingType.SUBCLASS;
+        nestingStack.push(classType);
         final var methods = new ArrayList<Stmt.Fun>();
         while (!check(RIGHT_BRACE) && !isAtEnd()) {
+            nestingStack.push(NestingType.METHOD);
             final var method = function("method");
+            assert nestingStack.peek() == NestingType.METHOD;
+            nestingStack.pop();
             assert method instanceof Stmt.Fun;
             methods.add((Stmt.Fun) method);
         }
         consume(RIGHT_BRACE, "Expected '}' after class declaration body.");
-        --classNestingLevel;
-        return new Stmt.Class(identifier, methods);
+        assert nestingStack.peek() == classType;
+        nestingStack.pop();
+        return new Stmt.Class(identifier, superclass, methods);
     }
 
     // funDecl        → "fun" function ;
@@ -141,13 +165,22 @@ public class Parser {
     // function       → IDENTIFIER "(" parameters? ")" block ;
     private Stmt function(String declarationKeyword) {
         final var name = consume(IDENTIFIER, "Expected " + declarationKeyword + " identifier.");
+        boolean isInitializer = !nestingStack.empty() && nestingStack.peek() == NestingType.METHOD && name.lexeme.equals("init");
+        if (isInitializer) {
+            nestingStack.push(NestingType.INITIALIZER);
+        }
         consume(LEFT_PAREN, "Expected '(' before parameter list of " + declarationKeyword + " declaration.");
         final var parameters = parameters();
         consume(RIGHT_PAREN, "Expected ')' after parameter list of " + declarationKeyword + " declaration.");
         consume(LEFT_BRACE, "Expected '{' to start " + declarationKeyword + " body.");
-        ++functionNestingLevel;
+        nestingStack.push(NestingType.FUNCTION);
         final var functionBody = block();
-        --functionNestingLevel;
+        assert nestingStack.peek() == NestingType.FUNCTION;
+        nestingStack.pop();
+        if (isInitializer) {
+            assert nestingStack.peek() == NestingType.INITIALIZER;
+            nestingStack.pop();
+        }
         return new Stmt.Fun(name, parameters, functionBody);
     }
 
@@ -232,9 +265,10 @@ public class Parser {
         consume(LEFT_PAREN, "Expected '(' after while.");
         final var loopCondition = expression();
         consume(RIGHT_PAREN, "Expected ')' after condition of while-statement.");
-        ++loopNestingLevel;
+        nestingStack.push(NestingType.LOOP);
         final var loopBody = statement();
-        --loopNestingLevel;
+        assert nestingStack.peek() == NestingType.LOOP;
+        nestingStack.pop();
         return new Stmt.While(loopCondition, loopBody);
     }
 
@@ -257,9 +291,10 @@ public class Parser {
             step = expression();
         }
         consume(RIGHT_PAREN, "Expected ')' before body of for-loop.");
-        ++loopNestingLevel;
+        nestingStack.push(NestingType.LOOP);
         final var loopBody = statement();
-        --loopNestingLevel;
+        assert nestingStack.peek() == NestingType.LOOP;
+        nestingStack.pop();
         final var statements = new ArrayList<Stmt>();
         if (initialization != null) {
             statements.add(initialization);
@@ -275,7 +310,7 @@ public class Parser {
 
     // breakStmt      → "break" ";" ;
     private Stmt breakStmt() {
-        if (loopNestingLevel == 0) {
+        if (getNestingLevel(NestingType.LOOP) == 0) {
             throw error(previous(), "'break' may only appear inside loops.");
         }
         consume(SEMICOLON, "Expected ';' after break.");
@@ -284,7 +319,7 @@ public class Parser {
 
     // continueStmt   → "continue" ";" ;
     private Stmt continueStmt() {
-        if (loopNestingLevel == 0) {
+        if (getNestingLevel(NestingType.LOOP) == 0) {
             throw error(previous(), "'continue' may only appear inside loops.");
         }
         consume(SEMICOLON, "Expected ';' after continue.");
@@ -293,12 +328,16 @@ public class Parser {
 
     // returnStmt     → "return" ";" ;
     private Stmt returnStmt() {
-        if (functionNestingLevel == 0) {
+        if (getNestingLevel(NestingType.FUNCTION) == 0) {
             throw error(previous(), "'return' may only appear inside functions.");
         }
+        final boolean isInitializer = nestingStack.size() >= 2 && nestingStack.get(nestingStack.size() - 2) == NestingType.INITIALIZER;
         Expr returnValue = null;
         if (!check(SEMICOLON)) {
             returnValue = expression();
+        }
+        if (returnValue != null && isInitializer) {
+            throw error(peek(), "'return' statement in initializer cannot return a value.");
         }
         consume(SEMICOLON, "Expected ';' after return.");
         return new Stmt.Return(returnValue);
@@ -505,7 +544,8 @@ public class Parser {
     // primary        → "true" | "false" | "nil" | "this"
     //                | NUMBER | STRING
     //                | "(" expression ")"
-    //                | IDENTIFIER ;
+    //                | IDENTIFIER
+    //                | "super" "." IDENTIFIER ;
     private Expr primary() {
         if (match(FALSE)) {
             return new Expr.Literal(false);
@@ -517,7 +557,7 @@ public class Parser {
             return new Expr.Literal(null);
         }
         if (match(THIS)) {
-            if (classNestingLevel <= 0) {
+            if (getNestingLevel(NestingType.CLASS) + getNestingLevel(NestingType.SUBCLASS) <= 0) {
                 throw error(previous(), "'this' can only be used inside class methods.");
             }
             return new Expr.This(previous());
@@ -533,9 +573,32 @@ public class Parser {
         if (match(IDENTIFIER)) {
             return new Expr.Variable(previous());
         }
+        if (match(SUPER)) {
+            if (getNestingLevel(NestingType.SUBCLASS) + getNestingLevel(NestingType.CLASS) <= 0) {
+                throw error(previous(), "'super' is only allowed in classes.");
+            }
+            if (!isDirectlyInsideSubclass()) {
+                throw error(previous(), "'super' is not allowed in non-inheriting classes.");
+            }
+            final var superKeyword = previous();
+            consume(DOT, "Expected '.' after 'super'.");
+            final var methodIdentifier = consume(IDENTIFIER, "Expected identifier after 'super.'.");
+            return new Expr.Super(superKeyword, methodIdentifier);
+        }
         throw error(peek(), "Expected expression.");
     }
 
+    private boolean isDirectlyInsideSubclass() {
+        for (var i = nestingStack.size() - 1; i >= 0; --i) {
+            if (nestingStack.get(i) == NestingType.CLASS) {
+                return false;
+            }
+            if (nestingStack.get(i) == NestingType.SUBCLASS) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     private boolean match(TokenType... types) {
         for (var type : types) {

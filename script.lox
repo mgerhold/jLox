@@ -1,15 +1,26 @@
-var ref;
-
-{
-    class A {
-        f() {
-            print this.size;
-        }
+class A {
+    f() {
+        print "A.f()";
     }
-
-    var a = A();
-    a.size = 42;
-    ref = a.f;
 }
 
-ref();
+class B < A {
+    f() {
+        super.f();
+        print "B.f()";
+
+        class C < B {
+            f() {
+                super.f();
+                print "C.f()";
+            }
+        }
+
+        return C();
+    }
+}
+
+var b = B();
+var c = b.f();
+print "============";
+c.f();

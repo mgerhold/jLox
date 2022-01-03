@@ -210,6 +210,18 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     }
 
     @Override
+    public Object visitSuperExpr(Expr.Super expr) {
+        final var distance = locals.get(expr);
+        final var superclass = (LoxClass)environment.getAt(distance, "super");
+        final var object = (LoxInstance)environment.getAt(distance - 1, "this");
+        final var method = superclass.findMethod(expr.method.lexeme);
+        if (method == null) {
+            throw new RuntimeError(expr.method, "Undefined property '" + expr.method.lexeme + "'.");
+        }
+        return method.bind(object);
+    }
+
+    @Override
     public Object visitGroupingExpr(Expr.Grouping expr) {
         return evaluate(expr.expression);
     }
@@ -394,21 +406,38 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
     @Override
     public Void visitFunStmt(Stmt.Fun stmt) {
-        final var function = new LoxFunction(stmt, environment);
+        final var function = new LoxFunction(stmt, environment, false);
         environment.define(stmt.name, function);
         return null;
     }
 
     @Override
     public Void visitClassStmt(Stmt.Class stmt) {
+        Object superclass = null;
+        if (stmt.superclass != null) {
+            superclass = evaluate(stmt.superclass);
+            if (!(superclass instanceof LoxClass)) {
+                throw new RuntimeError(stmt.superclass.name, "Superclass must be a class.");
+            }
+        }
         environment.define(stmt.name);
+
+        if (stmt.superclass != null) {
+            environment = new Environment(environment);
+            environment.defineByName("super", superclass);
+        }
 
         final var methods = new HashMap<String, LoxFunction>();
         for (final var method : stmt.methods) {
-            final var function = new LoxFunction(method, environment);
+            final var function = new LoxFunction(method, environment, method.name.lexeme.equals("init"));
             methods.put(method.name.lexeme, function);
         }
-        final var klass = new LoxClass(stmt.name.lexeme, methods);
+        final var klass = new LoxClass(stmt.name.lexeme, (LoxClass)superclass, methods);
+
+        if (stmt.superclass != null) {
+            environment = environment.enclosing;
+        }
+
         environment.assign(stmt.name, klass);
         return null;
     }
